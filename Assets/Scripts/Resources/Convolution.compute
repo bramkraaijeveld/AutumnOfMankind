@@ -1,0 +1,24 @@
+﻿int matrixSize;
+int kernelSize;
+
+#pragma kernel Convolution
+
+RWStructuredBuffer<float> input;
+RWStructuredBuffer<float> kernel;
+RWStructuredBuffer<float> output;
+
+[numthreads(8,8,1)]
+void Convolution (int2 id : SV_DispatchThreadID) {
+	
+	float sum = 0;
+
+	for (int i=-kernelSize; i<=kernelSize; i++){
+		for (int j=-kernelSize; j<=kernelSize; j++){
+			if (id.x + i >= 0 && id.x + i < matrixSize && id.y + j >= 0 && id.y + j < matrixSize){
+				sum += input[(id.x+i) * matrixSize + id.y + j] * kernel[(i + kernelSize) * (kernelSize * 2 + 1) + j + kernelSize];
+			}
+		}
+	}
+
+	output[id.x * matrixSize + id.y] = sum;
+}

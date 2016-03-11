@@ -1,0 +1,22 @@
+﻿int size;
+int nPoints;
+
+#pragma kernel Voronoi
+
+RWStructuredBuffer<float2> points;
+RWStructuredBuffer<float> output;
+
+[numthreads(8,8,1)]
+void Voronoi (uint2 id : SV_DispatchThreadID){
+	
+	float nearest = size * size;
+
+	for (int i=0; i<nPoints; i++){
+		float distance = length(id - points[i]);
+		if (distance < nearest){
+			nearest = distance;
+		}
+	}
+
+	output[id.x * size + id.y] = nearest / size;
+}

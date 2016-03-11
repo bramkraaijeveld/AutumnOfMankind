@@ -1,0 +1,70 @@
+﻿RWStructuredBuffer<int> p;
+int size;
+float height;
+float persistence;
+float scale;
+float4 offset;
+
+float fade(in float t) { return t*t*t*(t*(t*6-15)+10); }
+float lerp(in float t, in float a, in float b){ return a+t*(b-a); }
+float grad(in int hash, in float x, in float y, in float z){
+	int h = hash & 15;
+	float u = h<8 ? x : y;
+	float v = h<4 ? y : h==12||h==14 ? x : z;
+	return ((h&1) == 0 ? u : -u) + ((h&2) == 0 ? v : -v);
+}
+
+float noise(float x, float y, float z){
+	int X = (int)floor(x)&255;
+	int Y = (int)floor(y)&255;
+	int Z = (int)floor(z)&255;
+	
+	x-=floor(x);
+	y-=floor(y);
+	z-=floor(z);
+	
+	float u = fade(x);
+	float v = fade(y);
+	float w = fade(z);
+	
+	int A = p[X]+Y;
+	int AA = p[A]+Z;
+	int AB = p[A+1]+Z;
+	int B = p[X+1]+Y;
+	int BA = p[B]+Z;
+	int BB = p[B+1]+Z;
+	
+	return lerp(w, lerp(v, lerp(u, grad(p[AA  ], x  , y  , z   ),  // AND ADD
+                                   grad(p[BA  ], x-1, y  , z   )), // BLENDED
+                           lerp(u, grad(p[AB  ], x  , y-1, z   ),  // RESULTS
+                                   grad(p[BB  ], x-1, y-1, z   ))),// FROM  8
+                   lerp(v, lerp(u, grad(p[AA+1], x  , y  , z-1 ),  // CORNERS
+                                   grad(p[BA+1], x-1, y  , z-1 )), // OF CUBE
+                           lerp(u, grad(p[AB+1], x  , y-1, z-1 ),
+                                   grad(p[BB+1], x-1, y-1, z-1 ))));
+}
+
+float perlin(in float x, in float y, in float z){
+	float octaves = 16;
+	float norm = 0.0;
+	float total = 0.0;
+	
+	for (int i=0; i<octaves; i++){
+		float frequency = pow(2,i);
+		float amplitude = pow(abs(persistence),i);
+		
+		total+=noise((offset.x + x) * frequency * scale, (offset.y + y) * frequency * scale, (offset.z + z) * frequency * scale) * amplitude;
+		norm+=amplitude;
+	}
+	
+	return total;
+}
+
+#pragma kernel Perlin
+RWStructuredBuffer<float> output;
+
+[numthreads(32,32,1)]
+void Perlin(uint2 id : SV_DispatchThreadID)
+{
+	output[id.y * size + id.x] = perlin(id.x,id.y,0.0) * height;
+}
