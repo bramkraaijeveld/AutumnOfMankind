@@ -8,11 +8,11 @@ public class ProceduralTerrain {
     public ProceduralTerrain(Matrix heightMap, int partitions) {
         root = new GameObject("Procedural Terrain");
 
-        Mesh[,] meshes = heightMap.ToMesh(partitions, true);
+        Mesh[,] meshes = heightMap.ToMesh(partitions);
 
-        for (int x =0; x<meshes.GetLength(0); x++) {
-            for (int y=0; y<meshes.GetLength(1); y++) {
-                CreateChunk(meshes[x, y], "["+x+", "+y+"]").transform.position = new Vector3(x, 0, y) * ((heightMap.Size - 1) / partitions);
+        for (int x = 0; x<meshes.GetLength(0); x++) {
+            for (int y = 0; y<meshes.GetLength(1); y++) {
+                CreateChunk(meshes[x, y], "["+x+", "+y+"]").transform.position = new Vector3(x, 0, y) * (heightMap.Size / partitions);
             }
         }
     }

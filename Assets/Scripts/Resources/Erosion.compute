@@ -1,0 +1,40 @@
+﻿int step;
+int size;
+
+float talus;
+float maxflow;
+
+#pragma kernel Thermal
+
+RWStructuredBuffer<float> heightMap;
+RWStructuredBuffer<float> soilMap;
+RWStructuredBuffer<float4> outflowMap;
+
+[numthreads(8,8,1)]
+void Thermal (int2 id : SV_DispatchThreadID){
+	if (step == 0){
+		// Calculating Height Differences of heightMap + soilMap for the Up, Right, Down & Left Directions
+		float up = 0, right = 0, down = 0, left = 0;
+		if (id.y + 1 < size) up = clamp(heightMap[id.x * size + id.y] + soilMap[id.x * size + id.y] - heightMap[id.x * size + id.y + 1] - soilMap[id.x * size + id.y + 1] - talus, 0, maxflow);
+		if (id.x + 1 < size) right = clamp(heightMap[id.x * size + id.y] + soilMap[id.x * size + id.y] - heightMap[(id.x + 1) * size + id.y] - soilMap[(id.x + 1) * size + id.y] - talus, 0, maxflow);
+		if (id.y - 1 >= 0) down = clamp(heightMap[id.x * size + id.y] + soilMap[id.x * size + id.y] - heightMap[id.x * size + id.y - 1] - soilMap[id.x * size + id.y - 1] - talus, 0, maxflow);
+		if (id.x - 1 >= 0) left = clamp(heightMap[id.x * size + id.y] + soilMap[id.x * size + id.y] - heightMap[(id.x - 1) * size + id.y] - soilMap[(id.x - 1) * size + id.y] - talus, 0, maxflow);
+
+		float4 outflow = float4(up, right, down, left);
+
+		// Ensuring No More Soil Flows out than there exists
+		float sum = outflow.x + outflow.y + outflow.z + outflow.w;
+		if (sum > soilMap[id.x * size + id.y] && sum != 0) outflow = min(maxflow, outflow / sum * soilMap[id.x * size + id.y]);
+
+		outflowMap[id.x * size + id.y] = outflow;
+	}
+	
+	if (step == 1){
+		// Accumulating Outflow & Inflow in SoilMap
+		soilMap[id.x * size + id.y] += -outflowMap[id.x * size + id.y].x - outflowMap[id.x * size + id.y].y - outflowMap[id.x * size + id.y].z - outflowMap[id.x * size + id.y].w;
+		if (id.y + 1 < size) soilMap[id.x * size + id.y] += outflowMap[id.x * size + id.y + 1].z;
+		if (id.x + 1 < size) soilMap[id.x * size + id.y] += outflowMap[(id.x + 1) * size + id.y].w;
+		if (id.y - 1 >= 0) soilMap[id.x * size + id.y] += outflowMap[id.x * size + id.y - 1].x;
+		if (id.x - 1 >= 0) soilMap[id.x * size + id.y] += outflowMap[(id.x - 1) * size + id.y].y;
+	}
+}

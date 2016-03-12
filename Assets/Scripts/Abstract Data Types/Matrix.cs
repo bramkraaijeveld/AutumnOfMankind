@@ -1,4 +1,5 @@
 ﻿using UnityEngine;
+using System.Collections.Generic;
 
 public class Matrix {
 
@@ -28,7 +29,6 @@ public class Matrix {
     }
 
     public Matrix[,] Partition(int n, bool inclusive = false) {
-
         Matrix[,] matrices = new Matrix[n, n];
 
         if (inclusive) {
@@ -114,6 +114,112 @@ public class Matrix {
         }
 
         return new Matrix(m);
+    }
+
+    public static IEnumerable<Matrix> ThermalErosion(Matrix heightMap, Matrix soilMap, float talus, float maxflow, int iterations) {
+        ComputeShader shader = Resources.Load<ComputeShader>("Erosion");
+
+        int kernel = shader.FindKernel("Thermal");
+        int size = heightMap.size;
+
+        shader.SetInt("size", size);
+        shader.SetFloat("talus", talus);
+        shader.SetFloat("maxflow", maxflow);
+
+        ComputeBuffer heightMapBuffer = new ComputeBuffer(size * size, sizeof(float));
+        heightMapBuffer.SetData(heightMap.data);
+        shader.SetBuffer(kernel, "heightMap", heightMapBuffer);
+
+        ComputeBuffer soilMapBuffer = new ComputeBuffer(size * size, sizeof(float));
+        soilMapBuffer.SetData(soilMap.data);
+        shader.SetBuffer(kernel, "soilMap", soilMapBuffer);
+
+        ComputeBuffer outflowBuffer = new ComputeBuffer(size * size, sizeof(float) * 4);
+        shader.SetBuffer(kernel, "outflowMap", outflowBuffer);
+
+        float[,] soilData = new float[size, size];
+
+        for (int i = 0; i < iterations; i++) {
+            // Dispatch Flow Calculation
+            shader.SetInt("step", 0);
+            shader.Dispatch(kernel, size / 8, size / 8, 1);
+
+            // Dispatch Flow Accumulation
+            shader.SetInt("step", 1);
+            shader.Dispatch(kernel, size / 8, size / 8, 1);
+
+            soilMapBuffer.GetData(soilData);
+
+            yield return new Matrix(soilData);
+        }
+
+        heightMapBuffer.Release();
+        soilMapBuffer.Release();
+        outflowBuffer.Release();
+    }
+
+    public static IEnumerable<Matrix> HydraulicErosion(Matrix terrainMap, Matrix rainMap, float pipeArea, float pipeLength, float gravity, float deltaTime, int iterations) {
+        ComputeShader shader = Resources.Load<ComputeShader>("Hydraulic");
+        int kernel = shader.FindKernel("Hydraulic");
+        int size = terrainMap.size;
+
+        shader.SetInt("size", size);
+        shader.SetFloat("dt", deltaTime);
+        shader.SetFloat("g", gravity);
+        shader.SetFloat("pipeArea", pipeArea);
+        shader.SetFloat("pipeLength", pipeLength);
+
+        ComputeBuffer terrainBuffer = new ComputeBuffer(size * size, sizeof(float));
+        terrainBuffer.SetData(terrainMap.data);
+        shader.SetBuffer(kernel, "heightMap", terrainBuffer);
+
+        ComputeBuffer rainBuffer = new ComputeBuffer(size * size, sizeof(float));
+        rainBuffer.SetData(rainMap.data);
+        shader.SetBuffer(kernel, "rainMap", rainBuffer);
+
+        ComputeBuffer waterBuffer = new ComputeBuffer(size * size, sizeof(float));
+        waterBuffer.SetData(new float[size, size]);
+        shader.SetBuffer(kernel, "waterMap", waterBuffer);
+
+        ComputeBuffer fluxBuffer = new ComputeBuffer(size * size, sizeof(float) * 4);
+        fluxBuffer.SetData(new Vector4[size, size]);
+        shader.SetBuffer(kernel, "fluxMap", fluxBuffer);
+
+        float[,] data = new float[size, size];
+
+        Vector4[,] fluxData = new Vector4[size, size];
+
+        for (int i = 0; i < iterations; i++) {
+            shader.SetInt("step", 0);
+            shader.Dispatch(kernel, size / 8, size / 8, 1);
+            shader.SetInt("step", 1);
+            shader.Dispatch(kernel, size / 8, size / 8, 1);
+            shader.SetInt("step", 2);
+            shader.Dispatch(kernel, size / 8, size / 8, 1);
+
+            fluxBuffer.GetData(fluxData);
+/*
+            string s = "";
+
+            for (int y=size-1; y>= 0; y--) {
+                s += "[";
+                for (int x=0; x< size; x++) {
+                    s += fluxData[x, y] + " ";
+                }
+                s += "]\n";
+            }
+
+            Debug.Log(s);
+*/
+            waterBuffer.GetData(data);
+
+            yield return new Matrix(data);
+        }
+
+        terrainBuffer.Release();
+        rainBuffer.Release();
+        waterBuffer.Release();
+        fluxBuffer.Release();
     }
 
     //-- MATRIX DATA --//
@@ -215,9 +321,7 @@ public class Matrix {
         return new Matrix(rawData);
     }
 
-    /// <summary>
-    /// Generates Diamond Square Matrix
-    /// </summary>
+    /// <summary>Generates Diamond Square Matrix</summary>
     /// <param name="seed">Seed for Pseudo-Random Number Generation</param>
     /// <param name="iterations">Matrix size will be 2^iterations + 1</param>
     /// <param name="height">Matrix Scaling</param>
@@ -256,6 +360,41 @@ public class Matrix {
     }
 
     //-- MATRIX CONVERSIONS --//
+    public static Texture2D Texture(Matrix r = null, Matrix g = null, Matrix b = null, Matrix a = null) {
+        int size = r.size;
+
+        float min = float.MaxValue, max = float.MinValue;
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < size; y++) {
+                if (r != null && r[x, y] > max) max = r[x, y];
+                if (g != null && g[x, y] > max) max = g[x, y];
+                if (b != null && b[x, y] > max) max = b[x, y];
+                if (a != null && a[x, y] > max) max = a[x, y];
+
+                if (r != null && r[x, y] < min) min = r[x, y];
+                if (g != null && g[x, y] < min) min = g[x, y];
+                if (b != null && b[x, y] < min) min = b[x, y];
+                if (a != null && a[x, y] < min) min = a[x, y];
+            }
+        }
+
+        Color32[] colors = new Color32[size * size];
+        for (int i = 0; i < colors.Length; i++) {
+            byte rv = r != null ? (byte)(int)((r[i % size, i / size] - min) / (max - min) * 255) : (byte)0;
+            byte gv = g != null ? (byte)(int)((r[i % size, i / size] - min) / (max - min) * 255) : (byte)0;
+            byte bv = b != null ? (byte)(int)((r[i % size, i / size] - min) / (max - min) * 255) : (byte)0;
+            byte av = a != null ? (byte)(int)((r[i % size, i / size] - min) / (max - min) * 255) : (byte)255;
+
+            colors[i] = new Color32(rv, gv, bv, av);
+        }
+
+        Texture2D texture = new Texture2D(size, size);
+        texture.SetPixels32(colors);
+        texture.Apply();
+
+        return texture;
+    }
+
     public Texture2D ToTexture() {
 
         float min = float.MaxValue, max = float.MinValue;
@@ -280,7 +419,7 @@ public class Matrix {
     }
 
     public Mesh[,] ToMesh(int partitions, bool smooth = false) {
-        Matrix[,] partition = Partition(partitions, true);
+        Matrix[,] partition = Partition(partitions, smooth);
         Mesh[,] meshes = new Mesh[partitions, partitions];
         for (int x = 0; x < partitions; x++) for (int y = 0; y < partitions; y++) meshes[x, y] = partition[x, y].ToMesh(smooth);
         return meshes;

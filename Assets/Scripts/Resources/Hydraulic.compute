@@ -1,0 +1,60 @@
+﻿int size;
+int step;
+
+float dt;
+float g;
+
+float pipeArea;
+float pipeLength;
+
+#pragma kernel Hydraulic
+
+RWStructuredBuffer<float> heightMap;
+RWStructuredBuffer<float> waterMap;
+RWStructuredBuffer<float> rainMap;
+RWStructuredBuffer<float4> fluxMap;
+
+[numthreads(8,8,1)]
+void Hydraulic (int2 id : SV_DispatchThreadID){
+	// 0. Water incrementation due to rain or water sources
+	if (step == 0){
+		waterMap[id.x * size + id.y] += rainMap[id.x * size + id.y] * dt;
+	}
+
+	// 1. Flow simulation using shallow-water model: Computation of Water Height Changes
+	if (step == 1){
+		// Computation of Height Differences
+		float up = 0, right = 0, down = 0, left = 0;
+		if (id.y + 1 < size) up = heightMap[id.x * size + id.y] + waterMap[id.x * size + id.y] - heightMap[id.x * size + id.y + 1] - waterMap[id.x * size + id.y + 1];
+		if (id.x + 1 < size) right = heightMap[id.x * size + id.y] + waterMap[id.x * size + id.y] - heightMap[(id.x + 1) * size + id.y] - waterMap[(id.x + 1) * size + id.y];
+		if (id.y - 1 >= 0) down = heightMap[id.x * size + id.y] + waterMap[id.x * size + id.y] - heightMap[id.x * size + id.y - 1] - waterMap[id.x * size + id.y - 1];
+		if (id.x - 1 >= 0) left = heightMap[id.x * size + id.y] + waterMap[id.x * size + id.y] - heightMap[(id.x - 1) * size + id.y] - waterMap[(id.x - 1) * size + id.y];
+
+		// Computation of Outgoing Flux
+		float4 flux = float4(
+			max(0, fluxMap[id.x * size + id.y].x + dt * g * pipeArea * up / pipeLength),
+			max(0, fluxMap[id.x * size + id.y].y + dt * g * pipeArea * right / pipeLength),
+			max(0, fluxMap[id.x * size + id.y].z + dt * g * pipeArea * down / pipeLength),
+			max(0, fluxMap[id.x * size + id.y].w + dt * g * pipeArea * left / pipeLength));
+
+		// Total Flux Must Not Exceed the Amount of Water
+		float sum = flux.x + flux.y + flux.z + flux.w;
+		if (sum > waterMap[id.x * size + id.y] && sum != 0) flux = flux / sum * waterMap[id.x * size + id.y];
+
+		fluxMap[id.x * size + id.y] = flux;
+	}
+	// 2. Flow simulation using shallow-water model: Computation of the velocity ﬁeld
+	if (step == 2){
+		// Updating Water Height: Accumulating Outflow & Inflow
+		waterMap[id.x * size + id.y] += -fluxMap[id.x * size + id.y].x - fluxMap[id.x * size + id.y].y - fluxMap[id.x * size + id.y].z - fluxMap[id.x * size + id.y].w;
+		if (id.y + 1 < size) waterMap[id.x * size + id.y] += fluxMap[id.x * size + id.y + 1].z;
+		if (id.x + 1 < size) waterMap[id.x * size + id.y] += fluxMap[(id.x + 1) * size + id.y].w;
+		if (id.y - 1 >= 0) waterMap[id.x * size + id.y] += fluxMap[id.x * size + id.y - 1].x;
+		if (id.x - 1 >= 0) waterMap[id.x * size + id.y] += fluxMap[(id.x - 1) * size + id.y].y;
+	}
+
+	// 3. Simulation of the erosion-deposition process
+	// 4. Transportation of suspended sediment by the velocity ﬁeld
+	// 5. Water evaporation
+
+}
