@@ -1,0 +1,51 @@
+﻿int size;
+int step;
+
+float dt;
+float g;
+
+float pipeArea;
+float pipeLength;
+
+float talus;
+
+#pragma kernel Thermal
+
+RWStructuredBuffer<float> heightMap;
+RWStructuredBuffer<float> soilMap;
+RWStructuredBuffer<float4> fluxMap;
+
+[numthreads(8,8,1)]
+void Thermal (int2 id : SV_DispatchThreadID){
+	// 1. Flow simulation using shallow-water model: Computation of Water Height Changes
+	if (step == 1){
+		// Computation of Height Differences
+		float up = 0, right = 0, down = 0, left = 0;
+		if (id.y + 1 < size) up = heightMap[id.x * size + id.y] + soilMap[id.x * size + id.y] - heightMap[id.x * size + id.y + 1] - soilMap[id.x * size + id.y + 1] - talus;
+		if (id.x + 1 < size) right = heightMap[id.x * size + id.y] + soilMap[id.x * size + id.y] - heightMap[(id.x + 1) * size + id.y] - soilMap[(id.x + 1) * size + id.y] - talus;
+		if (id.y - 1 >= 0) down = heightMap[id.x * size + id.y] + soilMap[id.x * size + id.y] - heightMap[id.x * size + id.y - 1] - soilMap[id.x * size + id.y - 1] - talus;
+		if (id.x - 1 >= 0) left = heightMap[id.x * size + id.y] + soilMap[id.x * size + id.y] - heightMap[(id.x - 1) * size + id.y] - soilMap[(id.x - 1) * size + id.y] - talus;
+
+		// Computation of Outgoing Flux
+		float4 flux = float4(
+			max(0, fluxMap[id.x * size + id.y].x + dt * g * pipeArea * up / pipeLength),
+			max(0, fluxMap[id.x * size + id.y].y + dt * g * pipeArea * right / pipeLength),
+			max(0, fluxMap[id.x * size + id.y].z + dt * g * pipeArea * down / pipeLength),
+			max(0, fluxMap[id.x * size + id.y].w + dt * g * pipeArea * left / pipeLength));
+
+		// Total Flux Must Not Exceed the Amount of Water
+		float sum = flux.x + flux.y + flux.z + flux.w;
+		if (sum > soilMap[id.x * size + id.y] && sum != 0) flux = flux / sum * soilMap[id.x * size + id.y];
+
+		fluxMap[id.x * size + id.y] = flux;
+	}
+	// 2. Flow simulation using shallow-water model: Computation of the velocity ﬁeld
+	if (step == 2){
+		// Updating Water Height: Accumulating Outflow & Inflow
+		soilMap[id.x * size + id.y] += -fluxMap[id.x * size + id.y].x - fluxMap[id.x * size + id.y].y - fluxMap[id.x * size + id.y].z - fluxMap[id.x * size + id.y].w;
+		if (id.y + 1 < size) soilMap[id.x * size + id.y] += fluxMap[id.x * size + id.y + 1].z;
+		if (id.x + 1 < size) soilMap[id.x * size + id.y] += fluxMap[(id.x + 1) * size + id.y].w;
+		if (id.y - 1 >= 0) soilMap[id.x * size + id.y] += fluxMap[id.x * size + id.y - 1].x;
+		if (id.x - 1 >= 0) soilMap[id.x * size + id.y] += fluxMap[(id.x - 1) * size + id.y].y;
+	}
+}

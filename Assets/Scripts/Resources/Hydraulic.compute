@@ -7,12 +7,16 @@ float g;
 float pipeArea;
 float pipeLength;
 
+float maxSedimentCapacity;
+
 #pragma kernel Hydraulic
 
 RWStructuredBuffer<float> heightMap;
 RWStructuredBuffer<float> waterMap;
 RWStructuredBuffer<float> rainMap;
 RWStructuredBuffer<float4> fluxMap;
+RWStructuredBuffer<float2> velocityMap;
+RWStructuredBuffer<float> sedimentMap;
 
 [numthreads(8,8,1)]
 void Hydraulic (int2 id : SV_DispatchThreadID){
@@ -51,9 +55,40 @@ void Hydraulic (int2 id : SV_DispatchThreadID){
 		if (id.x + 1 < size) waterMap[id.x * size + id.y] += fluxMap[(id.x + 1) * size + id.y].w;
 		if (id.y - 1 >= 0) waterMap[id.x * size + id.y] += fluxMap[id.x * size + id.y - 1].x;
 		if (id.x - 1 >= 0) waterMap[id.x * size + id.y] += fluxMap[(id.x - 1) * size + id.y].y;
-	}
 
+		float velX = fluxMap[id.x * size + id.y].y - fluxMap[id.x * size + id.y].w;
+		if (id.x - 1 >= 0) velX += fluxMap[(id.x - 1) * size + id.y].y;
+		if (id.x + 1 < size) velX -= fluxMap[(id.x + 1) * size + id.y].w;
+
+		float velY = fluxMap[id.x * size + id.y].x - fluxMap[id.x * size + id.y].z;
+		if (id.y - 1 >= 0) velY += fluxMap[id.x * size + id.y - 1].x;
+		if (id.y + 1 < size) velY -= fluxMap[id.x * size + id.y + 1].z;
+
+		velocityMap[id.x * size + id.y] = float2(velX, velY);
+	}
 	// 3. Simulation of the erosion-deposition process
+	if (step == 3){
+		// Calculate Slope Angles
+		float up = 0, right = 0, down = 0, left = 0;
+		if (id.y + 1 < size) up = tan(heightMap[id.x * size + id.y] - heightMap[id.x * size + id.y + 1]);
+		if (id.x + 1 < size) right = tan(heightMap[id.x * size + id.y] - heightMap[(id.x + 1) * size + id.y]);
+		if (id.y - 1 >= 0) down = tan(heightMap[id.x * size + id.y] - heightMap[id.x * size + id.y - 1]);
+		if (id.x - 1 >= 0) left = tan(heightMap[id.x * size + id.y] - heightMap[(id.x - 1) * size + id.y]);
+		float4 slope = float4(up, right, down, left);
+
+		// Calculate Velocity Angle
+		float4 velocity = float4(max(0,velocityMap[id.x * size + id.y].y), max(0,velocityMap[id.x * size + id.y].x), -min(0,velocityMap[id.x * size + id.y].y), -min(0,velocityMap[id.x * size + id.y].x));
+		float sum = (velocity.x + velocity.y + velocity.z + velocity.w);
+		if (sum != 0) velocity /= sum;
+
+		//Calculating Tilt Angle;
+		float tilt = dot(slope, velocity);
+
+		float sedimentCapacity = maxSedimentCapacity * sin(tilt * length(velocityMap[id.x * size + id.y]));
+
+		// ONLY FOR DEBUG
+		sedimentMap[id.x * size + id.y] = sedimentCapacity;
+	}
 	// 4. Transportation of suspended sediment by the velocity ﬁeld
 	// 5. Water evaporation
 

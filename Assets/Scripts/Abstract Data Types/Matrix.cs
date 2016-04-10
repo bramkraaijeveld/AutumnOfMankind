@@ -1,11 +1,11 @@
 ﻿using UnityEngine;
-using System.Collections.Generic;
 
 public class Matrix {
 
     private float[,] data;
     private int size;
 
+    public float[,] Data { get { return data; } }
     public int Size { get { return size; } }
 
     public Matrix(float[,] data) {
@@ -114,112 +114,6 @@ public class Matrix {
         }
 
         return new Matrix(m);
-    }
-
-    public static IEnumerable<Matrix> ThermalErosion(Matrix heightMap, Matrix soilMap, float talus, float maxflow, int iterations) {
-        ComputeShader shader = Resources.Load<ComputeShader>("Erosion");
-
-        int kernel = shader.FindKernel("Thermal");
-        int size = heightMap.size;
-
-        shader.SetInt("size", size);
-        shader.SetFloat("talus", talus);
-        shader.SetFloat("maxflow", maxflow);
-
-        ComputeBuffer heightMapBuffer = new ComputeBuffer(size * size, sizeof(float));
-        heightMapBuffer.SetData(heightMap.data);
-        shader.SetBuffer(kernel, "heightMap", heightMapBuffer);
-
-        ComputeBuffer soilMapBuffer = new ComputeBuffer(size * size, sizeof(float));
-        soilMapBuffer.SetData(soilMap.data);
-        shader.SetBuffer(kernel, "soilMap", soilMapBuffer);
-
-        ComputeBuffer outflowBuffer = new ComputeBuffer(size * size, sizeof(float) * 4);
-        shader.SetBuffer(kernel, "outflowMap", outflowBuffer);
-
-        float[,] soilData = new float[size, size];
-
-        for (int i = 0; i < iterations; i++) {
-            // Dispatch Flow Calculation
-            shader.SetInt("step", 0);
-            shader.Dispatch(kernel, size / 8, size / 8, 1);
-
-            // Dispatch Flow Accumulation
-            shader.SetInt("step", 1);
-            shader.Dispatch(kernel, size / 8, size / 8, 1);
-
-            soilMapBuffer.GetData(soilData);
-
-            yield return new Matrix(soilData);
-        }
-
-        heightMapBuffer.Release();
-        soilMapBuffer.Release();
-        outflowBuffer.Release();
-    }
-
-    public static IEnumerable<Matrix> HydraulicErosion(Matrix terrainMap, Matrix rainMap, float pipeArea, float pipeLength, float gravity, float deltaTime, int iterations) {
-        ComputeShader shader = Resources.Load<ComputeShader>("Hydraulic");
-        int kernel = shader.FindKernel("Hydraulic");
-        int size = terrainMap.size;
-
-        shader.SetInt("size", size);
-        shader.SetFloat("dt", deltaTime);
-        shader.SetFloat("g", gravity);
-        shader.SetFloat("pipeArea", pipeArea);
-        shader.SetFloat("pipeLength", pipeLength);
-
-        ComputeBuffer terrainBuffer = new ComputeBuffer(size * size, sizeof(float));
-        terrainBuffer.SetData(terrainMap.data);
-        shader.SetBuffer(kernel, "heightMap", terrainBuffer);
-
-        ComputeBuffer rainBuffer = new ComputeBuffer(size * size, sizeof(float));
-        rainBuffer.SetData(rainMap.data);
-        shader.SetBuffer(kernel, "rainMap", rainBuffer);
-
-        ComputeBuffer waterBuffer = new ComputeBuffer(size * size, sizeof(float));
-        waterBuffer.SetData(new float[size, size]);
-        shader.SetBuffer(kernel, "waterMap", waterBuffer);
-
-        ComputeBuffer fluxBuffer = new ComputeBuffer(size * size, sizeof(float) * 4);
-        fluxBuffer.SetData(new Vector4[size, size]);
-        shader.SetBuffer(kernel, "fluxMap", fluxBuffer);
-
-        float[,] data = new float[size, size];
-
-        Vector4[,] fluxData = new Vector4[size, size];
-
-        for (int i = 0; i < iterations; i++) {
-            shader.SetInt("step", 0);
-            shader.Dispatch(kernel, size / 8, size / 8, 1);
-            shader.SetInt("step", 1);
-            shader.Dispatch(kernel, size / 8, size / 8, 1);
-            shader.SetInt("step", 2);
-            shader.Dispatch(kernel, size / 8, size / 8, 1);
-
-            fluxBuffer.GetData(fluxData);
-/*
-            string s = "";
-
-            for (int y=size-1; y>= 0; y--) {
-                s += "[";
-                for (int x=0; x< size; x++) {
-                    s += fluxData[x, y] + " ";
-                }
-                s += "]\n";
-            }
-
-            Debug.Log(s);
-*/
-            waterBuffer.GetData(data);
-
-            yield return new Matrix(data);
-        }
-
-        terrainBuffer.Release();
-        rainBuffer.Release();
-        waterBuffer.Release();
-        fluxBuffer.Release();
     }
 
     //-- MATRIX DATA --//
@@ -361,7 +255,11 @@ public class Matrix {
 
     //-- MATRIX CONVERSIONS --//
     public static Texture2D Texture(Matrix r = null, Matrix g = null, Matrix b = null, Matrix a = null) {
-        int size = r.size;
+        int size = 0;
+        if (r != null) size = r.size;
+        if (g != null) size = g.size;
+        if (b != null) size = b.size;
+        if (a != null) size = a.size;
 
         float min = float.MaxValue, max = float.MinValue;
         for (int x = 0; x < size; x++) {
@@ -381,9 +279,9 @@ public class Matrix {
         Color32[] colors = new Color32[size * size];
         for (int i = 0; i < colors.Length; i++) {
             byte rv = r != null ? (byte)(int)((r[i % size, i / size] - min) / (max - min) * 255) : (byte)0;
-            byte gv = g != null ? (byte)(int)((r[i % size, i / size] - min) / (max - min) * 255) : (byte)0;
-            byte bv = b != null ? (byte)(int)((r[i % size, i / size] - min) / (max - min) * 255) : (byte)0;
-            byte av = a != null ? (byte)(int)((r[i % size, i / size] - min) / (max - min) * 255) : (byte)255;
+            byte gv = g != null ? (byte)(int)((g[i % size, i / size] - min) / (max - min) * 255) : (byte)0;
+            byte bv = b != null ? (byte)(int)((b[i % size, i / size] - min) / (max - min) * 255) : (byte)0;
+            byte av = a != null ? (byte)(int)((a[i % size, i / size] - min) / (max - min) * 255) : (byte)255;
 
             colors[i] = new Color32(rv, gv, bv, av);
         }
@@ -418,100 +316,6 @@ public class Matrix {
         return texture;
     }
 
-    public Mesh[,] ToMesh(int partitions, bool smooth = false) {
-        Matrix[,] partition = Partition(partitions, smooth);
-        Mesh[,] meshes = new Mesh[partitions, partitions];
-        for (int x = 0; x < partitions; x++) for (int y = 0; y < partitions; y++) meshes[x, y] = partition[x, y].ToMesh(smooth);
-        return meshes;
-    }
-
-    public Mesh ToMesh(bool smooth = false) {
-        return smooth ? ToSmoothMesh() : ToFlatMesh();
-    }
-
-    private Mesh ToSmoothMesh() {
-        Vector3[] vertices = new Vector3[size * size];
-        //Vector3[] normals = new Vector3[size * size];
-        Vector2[] uvs = new Vector2[size * size];
-        int[] triangles = new int[(size - 1) * (size - 1) * 6];
-
-
-        // Vertices & UVS
-        int n = 0;
-        for (int x = 0; x < size; x++) {
-            for (int y = 0; y < size; y++) {
-                vertices[n] = new Vector3(x, data[x, y], y);
-                uvs[n] = new Vector2(x, y) / size;
-                n++;
-            }
-        }
-
-        //Triangles
-        n = 0;
-        for (int x = 0; x < size - 1; x++) {
-            for (int y = 0; y < size - 1; y++) {
-                triangles[n] = x * size + y;
-                triangles[n + 1] = x * size + y + 1;
-                triangles[n + 2] = (x + 1) * size + y + 1;
-                triangles[n + 3] = x * size + y;
-                triangles[n + 4] = (x + 1) * size + y + 1;
-                triangles[n + 5] = (x + 1) * size + y;
-                n += 6;
-            }
-        }
-
-
-        Mesh m = new Mesh();
-        m.vertices = vertices;
-        m.triangles = triangles;
-        m.RecalculateNormals();
-        m.uv = uvs;
-        m.Optimize();
-
-        return m;
-    }
-
-    private Mesh ToFlatMesh() {
-        Vector3[] vertices = new Vector3[(size - 1) * (size - 1) * 6];
-        Vector2[] uvs = new Vector2[(size - 1) * (size - 1) * 6];
-        int[] triangles = new int[(size - 1) * (size - 1) * 6];
-
-        int n = 0;
-        for (int x = 0; x < size - 1; x++) {
-            for (int y = 0; y < size - 1; y++) {
-
-                vertices[n] = new Vector3(x, data[x, y], y);
-                vertices[n + 1] = new Vector3(x, data[x, y + 1], y + 1);
-                vertices[n + 2] = new Vector3(x + 1, data[x + 1, y + 1], y + 1);
-
-                vertices[n + 3] = new Vector3(x, data[x, y], y);
-                vertices[n + 4] = new Vector3(x + 1, data[x + 1, y + 1], y + 1);
-                vertices[n + 5] = new Vector3(x + 1, data[x + 1, y], y);
-
-                uvs[n] = new Vector2(x, y) / size;
-                uvs[n + 1] = new Vector2(x, y + 1) / size;
-                uvs[n + 2] = new Vector2(x + 1, y + 1) / size;
-
-                uvs[n + 3] = new Vector2(x, y) / size;
-                uvs[n + 4] = new Vector2(x + 1, y + 1) / size;
-                uvs[n + 5] = new Vector2(x + 1, y) / size;
-
-                n += 6;
-            }
-        }
-
-        for (int i = 0; i < triangles.Length; i++) triangles[i] = i;
-
-        Mesh m = new Mesh();
-        m.vertices = vertices;
-        m.triangles = triangles;
-        m.uv = uvs;
-        m.RecalculateNormals();
-        m.Optimize();
-
-        return m;
-    }
-
     public override string ToString() {
         string matrixString = "Matrix" + size + "x" + size;
 
@@ -540,7 +344,7 @@ public class Matrix {
     }
 
     //-- OPERATOR OVERLOADS --//
-    public float this[int x, int y] { get { return data[x, y]; } set { data[x, y] = value; } }
+    public float this[int x, int y] { get { return data[Mathf.Min(Mathf.Max(x, 0), size - 1), Mathf.Min(Mathf.Max(y, 0), size - 1)]; } set { data[Mathf.Min(Mathf.Max(x, 0), size - 1), Mathf.Min(Mathf.Max(y, 0), size - 1)] = value; } }
 
     // Bilinear Interpolation
     // float u & v = [0..1]

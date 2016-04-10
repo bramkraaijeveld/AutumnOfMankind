@@ -3,43 +3,36 @@ using System.Collections;
 
 public class Test : MonoBehaviour {
 
-    public int size;
-    public float water;
-    public float gravity;
+    public int textureSize;
+    public float terrainHeight;
+    public float terrainFalloff;
+    public float terrainScale;
+    public float soilHeight;
+    public float talusAngle;
+    public float pipeArea;
     public float deltaTime;
+    public int cycles;
     public int iterations;
 
-    private Texture2D texture;
-    private Texture2D texture2;
-
     private Matrix heightMap;
-    private Matrix waterMap;
+    private Matrix soilMap;
 
     public void Start() {
-        heightMap = Matrix.Gaussian(size, Vector2.one);
-        waterMap = Matrix.Ones(size) * water;
+        heightMap = Matrix.Perlin(textureSize, terrainHeight, terrainFalloff, terrainScale, new Vector4(Random.Range(0, 1000), Random.Range(0, 1000), Random.Range(0, 1000), Random.Range(0, 1000)));
+        soilMap = Matrix.Ones(textureSize) * soilHeight;
 
-        Debug.Log(heightMap);
-        Debug.Log(waterMap);
-
-        texture = new Texture2D(128, 128);
-        texture2 = new Texture2D(128, 128);
-
-        StartCoroutine(playHydraulicErosion());
+        StartCoroutine(playThermalErosion());
     }
 
-    IEnumerator playHydraulicErosion() {
-        foreach (Matrix m in Matrix.HydraulicErosion(heightMap, waterMap, 1, 1, gravity, deltaTime, iterations)) {
-            texture = (m).ToTexture();
-            texture2 = (m + heightMap).ToTexture();
+    IEnumerator playThermalErosion() {
+        ProceduralTerrain terrain = new ProceduralTerrain(heightMap + soilMap, Resources.Load<Material>("Terrain"));
+
+        int i = 0;
+        foreach (Matrix soil in Erosion.Thermal(heightMap, soilMap, talusAngle, pipeArea, 1, deltaTime, cycles, iterations)) {
+            terrain.Update(heightMap + soil);
+            Debug.Log(++i);
             yield return null;
         }
         Debug.Log("DONE");
-    }
-
-    public void OnGUI() {
-        int s = Mathf.Min(Screen.width, Screen.height);
-        GUI.DrawTexture(new Rect(0, 0, s, s), texture);
-        GUI.DrawTexture(new Rect(s, 0, s, s), texture2);
     }
 }
