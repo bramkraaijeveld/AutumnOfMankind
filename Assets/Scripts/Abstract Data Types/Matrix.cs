@@ -316,6 +316,37 @@ public class Matrix {
         return texture;
     }
 
+    public Texture2D ToTexture(Gradient gradient) {
+        float min = float.MaxValue, max = float.MinValue;
+        for (int x = 0; x < size; x++) {
+            for (int y = 0; y < size; y++) {
+                if (data[x, y] > max) max = data[x, y];
+                if (data[x, y] < min) min = data[x, y];
+            }
+        }
+
+        Color32[] colors = new Color32[data.Length];
+        for (int i = 0; i < colors.Length; i++) colors[i] = gradient.Evaluate((data[i % size, i / size] - min) / (max - min));
+
+        Texture2D texture = new Texture2D(size, size);
+        texture.SetPixels32(colors);
+        texture.Apply();
+
+        return texture;
+    }
+
+    public Texture2D ToTexture(Gradient gradient, AnimationCurve mapping) {
+
+        Color32[] colors = new Color32[data.Length];
+        for (int i = 0; i < colors.Length; i++) colors[i] = gradient.Evaluate(mapping.Evaluate(data[i % size, i / size]));
+
+        Texture2D texture = new Texture2D(size, size);
+        texture.SetPixels32(colors);
+        texture.Apply();
+
+        return texture;
+    }
+
     public override string ToString() {
         string matrixString = "Matrix" + size + "x" + size;
 

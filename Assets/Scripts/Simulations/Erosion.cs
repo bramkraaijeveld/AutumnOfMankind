@@ -48,7 +48,7 @@ public class Erosion {
         }
     */
 
-    public static IEnumerable<Matrix> Hydraulic(Matrix terrainMap, Matrix rainMap, float pipeArea, float pipeLength, float maxSedimentCapacity, float deltaTime, int cycles, int iterations) {
+    public static IEnumerable<Matrix[]> Hydraulic(Matrix terrainMap, Matrix rainMap, float pipeArea, float pipeLength, float maxSedimentCapacity, float maxErosionDepth, float dissolveSpeed, float depositionSpeed, float evaporation, float tiltlim, float deltaTime, int cycles, int iterations) {
         ComputeShader shader = Resources.Load<ComputeShader>("Hydraulic");
         int kernel = shader.FindKernel("Hydraulic");
         int size = terrainMap.Size;
@@ -59,6 +59,11 @@ public class Erosion {
         shader.SetFloat("pipeArea", pipeArea);
         shader.SetFloat("pipeLength", pipeLength);
         shader.SetFloat("maxSedimentCapacity", maxSedimentCapacity);
+        shader.SetFloat("maxErosionDepth", maxErosionDepth);
+        shader.SetFloat("dissolveSpeed", dissolveSpeed);
+        shader.SetFloat("depositionSpeed", depositionSpeed);
+        shader.SetFloat("evaporation", evaporation);
+        shader.SetFloat("tiltlim", tiltlim);
 
         ComputeBuffer terrainBuffer = new ComputeBuffer(size * size, sizeof(float));
         terrainBuffer.SetData(terrainMap.Data);
@@ -80,23 +85,35 @@ public class Erosion {
         velocityBuffer.SetData(new Vector2[size, size]);
         shader.SetBuffer(kernel, "velocityMap", velocityBuffer);
 
+        ComputeBuffer sedimentCapacityBuffer = new ComputeBuffer(size * size, sizeof(float));
+        sedimentCapacityBuffer.SetData(new float[size, size]);
+        shader.SetBuffer(kernel, "sedimentCapacityMap", sedimentCapacityBuffer);
+
         ComputeBuffer sedimentBuffer = new ComputeBuffer(size * size, sizeof(float));
         sedimentBuffer.SetData(new float[size, size]);
         shader.SetBuffer(kernel, "sedimentMap", sedimentBuffer);
 
-        float[,] data = new float[size, size];
+        ComputeBuffer debugBuffer = new ComputeBuffer(size * size, sizeof(float));
+        debugBuffer.SetData(new float[size, size]);
+        shader.SetBuffer(kernel, "debugMap", debugBuffer);
+
+        float[,] terrainData = new float[size, size];
+        float[,] waterData = new float[size, size];
+        float[,] debugData = new float[size, size];
 
         for (int i = 0; i < iterations; i++) {
             for (int c = 0; c < cycles; c++) {
-                for (int step = 0; step <= 3; step++) {
+                for (int step = 0; step <= 5; step++) {
                     shader.SetInt("step", step);
                     shader.Dispatch(kernel, size / 8, size / 8, 1);
                 }
             }
 
-            waterBuffer.GetData(data);
+            terrainBuffer.GetData(terrainData);
+            waterBuffer.GetData(waterData);
+            debugBuffer.GetData(debugData);
 
-            yield return new Matrix(data);
+            yield return new Matrix[] { new Matrix(terrainData), new Matrix(waterData), new Matrix(debugData) };
         }
 
         terrainBuffer.Release();
@@ -104,7 +121,9 @@ public class Erosion {
         waterBuffer.Release();
         fluxBuffer.Release();
         velocityBuffer.Release();
+        sedimentCapacityBuffer.Release();
         sedimentBuffer.Release();
+        debugBuffer.Release();
     }
 
     public static IEnumerable<Matrix> Thermal(Matrix terrainMap, Matrix soilMap, float talusAngle, float pipeArea, float pipeLength, float deltaTime, int cycles, int iterations) {

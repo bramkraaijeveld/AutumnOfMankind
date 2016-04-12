@@ -93,12 +93,12 @@ public class ProceduralTerrain {
                         vertices[n + 5] = new Vector3(x + 1, heightMap[cx * chunkSize + x + 1, cy * chunkSize + y + 1], y + 1);
 
                         uvs[n] = new Vector2(cx * chunkSize + x, cy * chunkSize + y) / heightMap.Size;
-                        uvs[n + 1] = new Vector2(cx * chunkSize + x + 1, cy * chunkSize + y + 1) / heightMap.Size;
-                        uvs[n + 2] = new Vector2(cx * chunkSize + x + 1, cy * chunkSize + y) / heightMap.Size;
+                        uvs[n + 1] = new Vector2(cx * chunkSize + x, cy * chunkSize + y) / heightMap.Size;
+                        uvs[n + 2] = new Vector2(cx * chunkSize + x, cy * chunkSize + y) / heightMap.Size;
 
                         uvs[n + 3] = new Vector2(cx * chunkSize + x, cy * chunkSize + y) / heightMap.Size;
-                        uvs[n + 4] = new Vector2(cx * chunkSize + x, cy * chunkSize + y + 1) / heightMap.Size;
-                        uvs[n + 5] = new Vector2(cx * chunkSize + x + 1, cy * chunkSize + y + 1) / heightMap.Size;
+                        uvs[n + 4] = new Vector2(cx * chunkSize + x, cy * chunkSize + y) / heightMap.Size;
+                        uvs[n + 5] = new Vector2(cx * chunkSize + x, cy * chunkSize + y) / heightMap.Size;
 
                         n += 6;
                     }
